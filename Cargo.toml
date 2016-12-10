@@ -1,6 +1,21 @@
 [package]
-name = "tcp-minigame"
+name = "tcp_minigame"
 version = "0.1.0"
 authors = ["Cobrand <cobrandw@gmail.com>"]
 
 [dependencies]
+serde = "0.8"
+bincode = "0.6"
+serde_derive = "0.8"
+
+[dependencies.sdl2]
+optional = true
+version = "0.27"
+
+[dependencies.sdl2-sys]
+optional = true
+version = "0.27"
+
+[features]
+default = ["sdl"]
+sdl = ["sdl2-sys","sdl2"]
