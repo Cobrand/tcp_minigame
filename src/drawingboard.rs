@@ -1,6 +1,8 @@
 use serde::{Serialize,Deserialize};
 use std::fmt::Debug;
 
+use error::*;
+
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct DrawingBoard<C : Default> {
     pub data : Vec<C>,
@@ -18,16 +20,16 @@ impl<C : Default+Clone+Copy> DrawingBoard<C> {
         }
     }
 
-    fn pos_to_index(&self,pos:Position) -> Result<usize,&'static str> {
+    fn pos_to_index(&self,pos:Position) -> Result<usize> {
         if pos.x >= self.width
         || pos.y >= self.height {
-            Err("out of range")
+            Err(ErrorKind::OutOfBounds.into())
         } else {
             Ok(pos.x as usize + self.width as usize * pos.y as usize)
         }
     }
 
-    pub fn draw(&mut self,pos:Position,color:C) -> Result<(),&'static str> {
+    pub fn draw(&mut self,pos:Position,color:C) -> Result<()> {
         let index = try!(self.pos_to_index(pos));
         self.data[index] = color;
         Ok(())

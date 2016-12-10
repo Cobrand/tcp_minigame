@@ -7,6 +7,7 @@ authors = ["Cobrand <cobrandw@gmail.com>"]
 serde = "0.8"
 bincode = "0.6"
 serde_derive = "0.8"
+error-chain = "0.7"
 
 [dependencies.sdl2]
 optional = true
