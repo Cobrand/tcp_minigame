@@ -17,3 +17,13 @@ impl Default for Color<u8> {
         }
     }
 }
+
+impl<T:Copy+Clone+Debug+PartialEq+Serialize+Deserialize> Color<T> {
+    pub fn new(r:T, g:T, b:T) -> Color<T> {
+        Color {
+            r:r,
+            g:g,
+            b:b,
+        }
+    }
+}

@@ -1,5 +1,9 @@
 error_chain!{
     errors {
-        OutOfBounds {}
+        OutOfBounds
     }
+
+   foreign_links {
+       IoError(::std::io::Error);
+   }
 }

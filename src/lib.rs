@@ -14,4 +14,5 @@ extern crate sdl2;
 mod error;
 mod color;
 mod drawingboard;
+mod messages;
 pub mod game;
