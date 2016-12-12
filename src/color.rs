@@ -3,9 +3,9 @@ use std::fmt::Debug;
 
 #[derive(Serialize, Deserialize, PartialEq, Copy, Clone, Debug)]
 pub struct Color<T> where T:Serialize+Deserialize+PartialEq+Debug+Clone+Copy {
-    r:T,
-    g:T,
-    b:T,
+    pub r:T,
+    pub g:T,
+    pub b:T,
 }
 
 impl Default for Color<u8> {

@@ -1,3 +1,8 @@
+extern crate sdl2;
+use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
+use sdl2::pixels::Color as SdlColor;
+
 use bincode::serde::{deserialize_from,serialize_into,SerializeError,DeserializeError};
 use bincode::SizeLimit;
 
@@ -11,12 +16,10 @@ use super::messages::ClientMessage;
 
 use error::*;
 
-type ColorDrawingBoard = DrawingBoard<Color<u8>>;
-
-pub fn start_server(port: u16, initial_data: Option<ColorDrawingBoard>) -> Result<()> {
+pub fn start_server(port: u16, initial_data: Option<DrawingBoard>) -> Result<()> {
     let mut tcp_streams : Vec<TcpStream> = vec![];
     let mut to_remove : Vec<usize> = vec!();
-    let mut drawing_board = initial_data.unwrap_or(ColorDrawingBoard {
+    let mut drawing_board = initial_data.unwrap_or(DrawingBoard {
         data: vec![Color::new(0,0,0); 1200],
         width: 40,
         height: 30,
@@ -25,10 +28,14 @@ pub fn start_server(port: u16, initial_data: Option<ColorDrawingBoard>) -> Resul
     listener.set_nonblocking(true);
     loop {
         let mut update = false;
-        while let Ok((new_stream,_addr)) = listener.accept() {
-            println!("Accepted connection from {}", new_stream.peer_addr().unwrap());
+        while let Ok((mut new_stream,_addr)) = listener.accept() {
             let _ = new_stream.set_nodelay(true);
-            tcp_streams.push(new_stream);
+            if let Ok(_) = serialize_into(&mut new_stream, &drawing_board, SizeLimit::Infinite) {;
+                println!("Accepted connection from {}", new_stream.peer_addr().unwrap());
+                tcp_streams.push(new_stream);
+            } else {
+                println!("An error occured when trying to accept connection from {}", new_stream.peer_addr().unwrap());
+            }
         }
         for (index, mut stream) in tcp_streams.iter_mut().enumerate() {
             let read_result : StdResult<ClientMessage<Color<u8>>,_> =
@@ -85,14 +92,51 @@ pub fn start_server(port: u16, initial_data: Option<ColorDrawingBoard>) -> Resul
 #[cfg(feature = "sdl")]
 pub fn start_client<A: ToSocketAddrs>(target_ip: A) -> Result<()> {
     let mut tcp_stream = try!(TcpStream::connect(target_ip));
-    tcp_stream.set_nodelay(true);
+    tcp_stream.set_nonblocking(true);
     println!("Connected to remote server");
-    let message : ClientMessage<Color<u8>> = ClientMessage {
-        color: Color::new(0,128,255),
-        position: Position::new(5,9),
-    };
-    let write_result : StdResult<(),_> = serialize_into(&mut tcp_stream, &message, SizeLimit::Infinite);
-    loop {}
+    // let message : ClientMessage<Color<u8>> = ClientMessage {
+    //     color: Color::new(0,128,255),
+    //     position: Position::new(5,9),
+    // };
+    let mut drawing_board : DrawingBoard = 
+        deserialize_from(&mut tcp_stream, SizeLimit::Bounded(10240)).unwrap();
+    //let write_result : StdResult<(),_> = serialize_into(&mut tcp_stream, &message, SizeLimit::Infinite);
+
+    let sdl_context = sdl2::init().unwrap();
+    let video_subsystem = sdl_context.video().unwrap();
+
+    let window = video_subsystem.window("tcp_minigame",
+                                        drawing_board.width as u32 * 16,
+                                        drawing_board.height as u32 * 16)
+        .position_centered()
+        .build()
+        .unwrap();
+    let mut renderer = window.renderer().build().unwrap();
+
+    renderer.set_draw_color(SdlColor::RGB(255, 255, 255));
+    renderer.clear();
+    renderer.present();
+    let mut event_pump = sdl_context.event_pump().unwrap();
+
+    'running: loop {
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit {..} | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+                    break 'running
+                },
+                _ => {}
+            }
+        }
+        let read_result : StdResult<DrawingBoard,_> =
+            deserialize_from(&mut tcp_stream, SizeLimit::Bounded(10240));
+        if let Ok(new_drawing_board) = read_result {
+            drawing_board = new_drawing_board;
+        };
+        drawing_board.renderer_draw(&mut renderer);
+        renderer.clear();
+        renderer.present();
+        // The rest of the game loop goes here...
+    }
     Ok(())
 }
 
