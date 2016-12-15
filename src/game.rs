@@ -33,18 +33,18 @@ pub fn start_server(port: u16, initial_data: Option<DrawingBoard>) -> Result<()>
                 println!("Accepted connection from {}", new_stream.peer_addr().unwrap());
                 new_stream.set_nonblocking(false);
                 new_stream.set_read_timeout(Some(::std::time::Duration::from_millis(2))).unwrap();
+                new_stream.set_nodelay(true);
                 tcp_streams.push(new_stream);
             } else {
                 println!("An error occured when trying to accept connection from {}", new_stream.peer_addr().unwrap());
             }
         }
-        //println!("connected: {}",tcp_streams.len());
         for (index, mut stream) in tcp_streams.iter_mut().enumerate() {
             let read_result : StdResult<ClientMessage<Color<u8>>,_> =
                 deserialize_from(&mut stream, SizeLimit::Bounded(1024));
             match read_result {
                 Ok(client_message) => {
-                    println!("message !");
+                    println!("received");
                     match drawing_board.draw(client_message.position, client_message.color) {
                         Ok(()) => {
                             update = true;
@@ -53,7 +53,6 @@ pub fn start_server(port: u16, initial_data: Option<DrawingBoard>) -> Result<()>
                             /* ignore OutOfBounds error for now */
                         }
                     };
-                    // println!("{:?}",drawing_board);
                 },
                 Err(DeserializeError::IoError(io_error)) => {
                     match io_error.kind() {
@@ -64,12 +63,14 @@ pub fn start_server(port: u16, initial_data: Option<DrawingBoard>) -> Result<()>
                             println!("Some client disconnected");
                             to_remove.push(index);
                         },
-                        _ => {
-                            //println!("IoError: {:?}",e);
+                        IoErrorKind::WouldBlock => {},
+                        e => {
+                            println!("IoError: {:?}",e);
                         },
                     };
                 },
                 Err(e) => {
+                    println!("{:?}",e);
                     /* ignore other errors */
                 }
             }
@@ -84,7 +85,6 @@ pub fn start_server(port: u16, initial_data: Option<DrawingBoard>) -> Result<()>
                     serialize_into(&mut stream, &drawing_board, SizeLimit::Infinite);
                 match write_result {
                     Ok(_) => {
-                        println!("send updated world !");
                         /* Everything went well! */
                     },
                     Err(_) => {
@@ -99,6 +99,7 @@ pub fn start_server(port: u16, initial_data: Option<DrawingBoard>) -> Result<()>
 #[cfg(feature = "sdl")]
 pub fn start_client<A: ToSocketAddrs>(target_ip: A) -> Result<()> {
     let mut tcp_stream = try!(TcpStream::connect(target_ip));
+    tcp_stream.set_nodelay(true);
     println!("Connected to remote server");
     // let message : ClientMessage<Color<u8>> = ClientMessage {
     //     color: Color::new(0,128,255),
@@ -136,10 +137,9 @@ pub fn start_client<A: ToSocketAddrs>(target_ip: A) -> Result<()> {
                         color: Color::new(255,255,255),
                         position: Position::new(max(0,x) as u16 / 16, max(0,y) as u16 / 16),
                     };
-                    println!("message: {:?}",message);
                     let write_result : StdResult<(),_> =
                         serialize_into(&mut tcp_stream, &message, SizeLimit::Infinite);
-                    println!("write_result : {:?}",write_result);
+                    println!("write : {:?}",write_result);
                 },
                 _ => {}
             }
@@ -147,7 +147,6 @@ pub fn start_client<A: ToSocketAddrs>(target_ip: A) -> Result<()> {
         let read_result : StdResult<DrawingBoard,_> =
             deserialize_from(&mut tcp_stream, SizeLimit::Bounded(10240));
         if let Ok(new_drawing_board) = read_result {
-            println!("received board !");
             drawing_board = new_drawing_board;
             //println!("{:?}: {}x{}",drawing_board.data.len(),drawing_board.width,drawing_board.height);
         };

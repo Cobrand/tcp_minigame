@@ -31,7 +31,6 @@ impl DrawingBoard {
             Err(ErrorKind::OutOfBounds.into())
         } else {
             let index = pos.x as usize + self.width as usize * pos.y as usize;
-            println!("pos {:?} ; index : {}",pos, index);
             Ok(index)
         }
     }
@@ -59,9 +58,6 @@ impl DrawingBoard {
     pub fn renderer_draw(&self,renderer: &mut Renderer) {
         for (index, color) in self.data.iter().enumerate() {
             if let Ok(pos) = self.index_to_pos(index) {
-                // if *color == Color::new(255, 255, 255) {
-                //     println!("white {} {} {} !", self.width, self.height, index);
-                // }
                 renderer.set_draw_color(::sdl2::pixels::Color::RGB(color.r, color.g, color.b));
                 renderer.fill_rect(::sdl2::rect::Rect::new(pos.x as i32 *16, pos.y as i32 * 16, 16, 16));
             }
