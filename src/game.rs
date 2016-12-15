@@ -29,19 +29,22 @@ pub fn start_server(port: u16, initial_data: Option<DrawingBoard>) -> Result<()>
     loop {
         let mut update = false;
         while let Ok((mut new_stream,_addr)) = listener.accept() {
-            let _ = new_stream.set_nodelay(true);
             if let Ok(_) = serialize_into(&mut new_stream, &drawing_board, SizeLimit::Infinite) {;
                 println!("Accepted connection from {}", new_stream.peer_addr().unwrap());
+                new_stream.set_nonblocking(false);
+                new_stream.set_read_timeout(Some(::std::time::Duration::from_millis(2))).unwrap();
                 tcp_streams.push(new_stream);
             } else {
                 println!("An error occured when trying to accept connection from {}", new_stream.peer_addr().unwrap());
             }
         }
+        //println!("connected: {}",tcp_streams.len());
         for (index, mut stream) in tcp_streams.iter_mut().enumerate() {
             let read_result : StdResult<ClientMessage<Color<u8>>,_> =
                 deserialize_from(&mut stream, SizeLimit::Bounded(1024));
             match read_result {
                 Ok(client_message) => {
+                    println!("message !");
                     match drawing_board.draw(client_message.position, client_message.color) {
                         Ok(()) => {
                             update = true;
@@ -50,6 +53,7 @@ pub fn start_server(port: u16, initial_data: Option<DrawingBoard>) -> Result<()>
                             /* ignore OutOfBounds error for now */
                         }
                     };
+                    // println!("{:?}",drawing_board);
                 },
                 Err(DeserializeError::IoError(io_error)) => {
                     match io_error.kind() {
@@ -60,10 +64,12 @@ pub fn start_server(port: u16, initial_data: Option<DrawingBoard>) -> Result<()>
                             println!("Some client disconnected");
                             to_remove.push(index);
                         },
-                        _ => {},
+                        _ => {
+                            //println!("IoError: {:?}",e);
+                        },
                     };
                 },
-                Err(_) => {
+                Err(e) => {
                     /* ignore other errors */
                 }
             }
@@ -78,6 +84,7 @@ pub fn start_server(port: u16, initial_data: Option<DrawingBoard>) -> Result<()>
                     serialize_into(&mut stream, &drawing_board, SizeLimit::Infinite);
                 match write_result {
                     Ok(_) => {
+                        println!("send updated world !");
                         /* Everything went well! */
                     },
                     Err(_) => {
@@ -92,16 +99,15 @@ pub fn start_server(port: u16, initial_data: Option<DrawingBoard>) -> Result<()>
 #[cfg(feature = "sdl")]
 pub fn start_client<A: ToSocketAddrs>(target_ip: A) -> Result<()> {
     let mut tcp_stream = try!(TcpStream::connect(target_ip));
-    tcp_stream.set_nonblocking(true);
     println!("Connected to remote server");
     // let message : ClientMessage<Color<u8>> = ClientMessage {
     //     color: Color::new(0,128,255),
     //     position: Position::new(5,9),
     // };
-    let mut drawing_board : DrawingBoard = 
+    let mut drawing_board : DrawingBoard =
         deserialize_from(&mut tcp_stream, SizeLimit::Bounded(10240)).unwrap();
+    tcp_stream.set_nonblocking(true);
     //let write_result : StdResult<(),_> = serialize_into(&mut tcp_stream, &message, SizeLimit::Infinite);
-
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
@@ -111,18 +117,29 @@ pub fn start_client<A: ToSocketAddrs>(target_ip: A) -> Result<()> {
         .position_centered()
         .build()
         .unwrap();
-    let mut renderer = window.renderer().build().unwrap();
+    let mut renderer = window.renderer().present_vsync().build().unwrap();
 
     renderer.set_draw_color(SdlColor::RGB(255, 255, 255));
     renderer.clear();
     renderer.present();
     let mut event_pump = sdl_context.event_pump().unwrap();
-
     'running: loop {
         for event in event_pump.poll_iter() {
+            use sdl2::mouse::MouseButton;
+            use std::cmp::max;
             match event {
                 Event::Quit {..} | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
                     break 'running
+                },
+                Event::MouseButtonDown { mouse_btn: MouseButton::Left , x: x , y: y,  ..} => {
+                    let message : ClientMessage<Color<u8>> = ClientMessage {
+                        color: Color::new(255,255,255),
+                        position: Position::new(max(0,x) as u16 / 16, max(0,y) as u16 / 16),
+                    };
+                    println!("message: {:?}",message);
+                    let write_result : StdResult<(),_> =
+                        serialize_into(&mut tcp_stream, &message, SizeLimit::Infinite);
+                    println!("write_result : {:?}",write_result);
                 },
                 _ => {}
             }
@@ -130,10 +147,12 @@ pub fn start_client<A: ToSocketAddrs>(target_ip: A) -> Result<()> {
         let read_result : StdResult<DrawingBoard,_> =
             deserialize_from(&mut tcp_stream, SizeLimit::Bounded(10240));
         if let Ok(new_drawing_board) = read_result {
+            println!("received board !");
             drawing_board = new_drawing_board;
+            //println!("{:?}: {}x{}",drawing_board.data.len(),drawing_board.width,drawing_board.height);
         };
-        drawing_board.renderer_draw(&mut renderer);
         renderer.clear();
+        drawing_board.renderer_draw(&mut renderer);
         renderer.present();
         // The rest of the game loop goes here...
     }
